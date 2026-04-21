@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: #0d0805;
+  color: #f5e6d3;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Leaflet dark theme override */
+.leaflet-container {
+  background: #1a0f0a !important;
+  font-family: inherit;
+}
+
+.leaflet-control-zoom a {
+  background: #2d1f17 !important;
+  color: #c8956c !important;
+  border-color: #3d2a1e !important;
+}
+
+.leaflet-control-zoom a:hover {
+  background: #3d2a1e !important;
+}
+
+.leaflet-control-attribution {
+  background: rgba(13, 8, 5, 0.7) !important;
+  color: #7d4215 !important;
+  font-size: 9px !important;
+}
+
+.leaflet-control-attribution a {
+  color: #9c5a1a !important;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #1a0f0a;
+}
+::-webkit-scrollbar-thumb {
+  background: #3d2a1e;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #6b3f2a;
+}
+
+/* Gradient text utility */
+.gradient-text {
+  background: linear-gradient(135deg, #f5e6d3 0%, #c8956c 50%, #9c5a1a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glass card utility */
+.glass-card {
+  background: rgba(26, 15, 10, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(61, 42, 30, 0.6);
+}
+
+/* Noise texture overlay */
+.noise::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.4;
+}
+
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(200, 149, 108, 0.2); }
+  50% { box-shadow: 0 0 40px rgba(200, 149, 108, 0.4); }
+}
+
+.glow-pulse {
+  animation: glow 3s ease-in-out infinite;
+}
