@@ -97,7 +97,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-3">
             <span className="text-2xl">☕</span>
             <span className="font-serif text-xl font-semibold gradient-text">
-              Coffee With Me
+              Wanna Coffi
             </span>
           </div>
           <div className="flex items-center gap-3">

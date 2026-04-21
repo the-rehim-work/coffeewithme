@@ -16,11 +16,11 @@ const playfair = Playfair_Display({
 });
 
 export const metadata: Metadata = {
-  title: "Coffee With Me — Send a Coffee Date Invite",
+  title: "Wanna Coffi — Send a Coffee Date Invite",
   description:
     "Send a beautiful coffee date invitation. Pick a spot on the map, set a time, write a note. No strings attached.",
   openGraph: {
-    title: "Coffee With Me",
+    title: "Wanna Coffi",
     description: "You've been invited for coffee ☕",
     type: "website",
   },

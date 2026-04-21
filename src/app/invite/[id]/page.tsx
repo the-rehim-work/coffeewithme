@@ -318,7 +318,7 @@ export default function InvitePage({ params }: { params: { id: string } }) {
 
         <p className="text-center text-coffee-900 text-xs mt-5">
           Powered by{" "}
-          <span className="text-coffee-700">Coffee With Me ☕</span>
+          <span className="text-coffee-700">Wanna Coffi ☕</span>
         </p>
       </motion.div>
     </div>

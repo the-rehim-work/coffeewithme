@@ -114,7 +114,7 @@ export default function LandingPage() {
           transition={{ delay: 0.25 }}
           className="text-5xl md:text-6xl font-serif font-bold mb-4 gradient-text"
         >
-          Coffee With Me
+          Wanna Coffi
         </motion.h1>
 
         <motion.p
