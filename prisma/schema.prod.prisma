@@ -60,6 +60,7 @@ model CoffeeDate {
   id           String   @id @default(cuid())
   senderId     String
   sender       User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  recipientName String?
   message      String   @db.Text
   locationName String
   locationLat  Float

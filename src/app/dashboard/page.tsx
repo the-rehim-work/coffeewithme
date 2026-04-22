@@ -10,6 +10,7 @@ import Link from "next/link";
 
 interface CoffeeDate {
   id: string;
+  recipientName: string | null;
   message: string;
   locationName: string;
   scheduledAt: string;
@@ -195,7 +196,14 @@ export default function DashboardPage() {
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
-                        {/* Status badge */}
+                        {/* Recipient + Status */}
+                        <div className="flex items-center gap-2 mb-3">
+                          {date.recipientName && (
+                            <span className="text-coffee-300 text-xs font-medium">
+                              To: {date.recipientName}
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 mb-3">
                           <span
                             className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-lg border ${s.bg} ${s.color} ${s.border}`}

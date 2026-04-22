@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { message, locationName, locationLat, locationLng, scheduledAt } = body;
+  const { message, locationName, locationLat, locationLng, scheduledAt, recipientName } = body;
 
   if (!message || !locationName || !locationLat || !locationLng || !scheduledAt) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
   const date = await prisma.coffeeDate.create({
     data: {
       senderId: session.user.id,
+      recipientName: recipientName?.trim() || null,
       message,
       locationName,
       locationLat,

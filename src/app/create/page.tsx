@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import DateTimePicker from "@/components/DateTimePicker";
 
 const MapPicker = dynamic(() => import("@/components/MapPicker"), {
   ssr: false,
@@ -29,6 +30,7 @@ export default function CreatePage() {
   const router = useRouter();
 
   const [step, setStep] = useState<Step>(1);
+  const [recipientName, setRecipientName] = useState("");
   const [message, setMessage] = useState("");
   const [location, setLocation] = useState<{
     name: string;
@@ -56,6 +58,7 @@ export default function CreatePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          recipientName: recipientName.trim() || null,
           message: message.trim(),
           locationName: location.name,
           locationLat: location.lat,
@@ -208,6 +211,21 @@ export default function CreatePage() {
                 </p>
               </div>
 
+              {/* To field */}
+              <div className="mb-4">
+                <input
+                  type="text"
+                  value={recipientName}
+                  onChange={(e) => setRecipientName(e.target.value)}
+                  placeholder="To (e.g. Sarah, John…)"
+                  maxLength={60}
+                  className="w-full bg-dark-card border border-dark-border focus:border-coffee-600 rounded-2xl px-5 py-3.5 text-coffee-100 placeholder-coffee-800 outline-none transition-colors text-[15px]"
+                />
+                <p className="text-coffee-800 text-xs mt-1.5 pl-1">
+                  Optional — only visible to you on your dashboard
+                </p>
+              </div>
+
               <div className="relative">
                 <textarea
                   value={message}
@@ -312,18 +330,7 @@ export default function CreatePage() {
                 </p>
               </div>
 
-              <div className="bg-dark-card border border-dark-border rounded-2xl p-5">
-                <label className="block text-coffee-500 text-xs mb-2 uppercase tracking-wider">
-                  Date & Time
-                </label>
-                <input
-                  type="datetime-local"
-                  value={scheduledAt}
-                  onChange={(e) => setScheduledAt(e.target.value)}
-                  min={new Date().toISOString().slice(0, 16)}
-                  className="w-full bg-transparent text-coffee-100 text-lg outline-none [color-scheme:dark]"
-                />
-              </div>
+              <DateTimePicker value={scheduledAt} onChange={setScheduledAt} />
 
               {/* Preview */}
               {scheduledAt && location && (
