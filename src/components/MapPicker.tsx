@@ -1,8 +1,90 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import { useState, useCallback, useRef } from "react";
+import {
+  GoogleMap,
+  useJsApiLoader,
+  Marker,
+  Autocomplete,
+} from "@react-google-maps/api";
+
+const LIBRARIES: ("places")[] = ["places"];
+
+const DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
+  { elementType: "geometry", stylers: [{ color: "#1a0f0a" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#1a0f0a" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#c8956c" }] },
+  {
+    featureType: "administrative.locality",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#d4a06a" }],
+  },
+  {
+    featureType: "poi",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#9c5a1a" }],
+  },
+  {
+    featureType: "poi.park",
+    elementType: "geometry",
+    stylers: [{ color: "#2d1f17" }],
+  },
+  {
+    featureType: "poi.park",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#6b3f2a" }],
+  },
+  {
+    featureType: "road",
+    elementType: "geometry",
+    stylers: [{ color: "#3d2a1e" }],
+  },
+  {
+    featureType: "road",
+    elementType: "geometry.stroke",
+    stylers: [{ color: "#2d1507" }],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "geometry",
+    stylers: [{ color: "#6b3f2a" }],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "geometry.stroke",
+    stylers: [{ color: "#4a2515" }],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#f5e6d3" }],
+  },
+  {
+    featureType: "transit",
+    elementType: "geometry",
+    stylers: [{ color: "#2d1f17" }],
+  },
+  {
+    featureType: "transit.station",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#9c5a1a" }],
+  },
+  {
+    featureType: "water",
+    elementType: "geometry",
+    stylers: [{ color: "#0d0805" }],
+  },
+  {
+    featureType: "water",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#4a2515" }],
+  },
+  {
+    featureType: "water",
+    elementType: "labels.text.stroke",
+    stylers: [{ color: "#0d0805" }],
+  },
+];
 
 interface MapPickerProps {
   lat?: number;
@@ -19,187 +101,151 @@ export default function MapPicker({
   readonly = false,
   onSelect,
 }: MapPickerProps) {
-  const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<L.Map | null>(null);
-  const markerRef = useRef<L.Marker | null>(null);
-  const [search, setSearch] = useState("");
-  const [searching, setSearching] = useState(false);
-  const [suggestions, setSuggestions] = useState<
-    Array<{ display_name: string; lat: string; lon: string }>
-  >([]);
+  const { isLoaded } = useJsApiLoader({
+    id: "google-map-script",
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!,
+    libraries: LIBRARIES,
+  });
 
-  const defaultLat = lat ?? 40.7128;
-  const defaultLng = lng ?? -74.006;
+  const [map, setMap] = useState<google.maps.Map | null>(null);
+  const [marker, setMarker] = useState<{ lat: number; lng: number } | null>(
+    lat && lng ? { lat, lng } : null
+  );
+  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const geocoderRef = useRef<google.maps.Geocoder | null>(null);
 
-  useEffect(() => {
-    if (!mapRef.current || mapInstanceRef.current) return;
+  const defaultCenter = marker ?? { lat: 40.7128, lng: -74.006 };
 
-    const icon = L.divIcon({
-      html: `<div style="background:#c8956c;width:20px;height:20px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid #f5e6d3;box-shadow:0 2px 8px rgba(0,0,0,0.5)"></div>`,
-      iconSize: [20, 20],
-      iconAnchor: [10, 20],
-      className: "",
-    });
-
-    const map = L.map(mapRef.current, {
-      center: [defaultLat, defaultLng],
-      zoom: lat ? 14 : 12,
-      zoomControl: true,
-    });
-
-    L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-      {
-        attribution: "© OpenStreetMap contributors © CARTO",
-        maxZoom: 19,
-      }
-    ).addTo(map);
-
-    if (lat && lng) {
-      markerRef.current = L.marker([lat, lng], { icon }).addTo(map);
-    }
-
-    if (!readonly) {
-      map.on("click", async (e) => {
-        const { lat: clickLat, lng: clickLng } = e.latlng;
-
-        if (markerRef.current) {
-          markerRef.current.setLatLng([clickLat, clickLng]);
-        } else {
-          markerRef.current = L.marker([clickLat, clickLng], { icon }).addTo(
-            map
-          );
-        }
-
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${clickLat}&lon=${clickLng}&format=json`
-          );
-          const data = await res.json();
-          const name =
-            data.display_name?.split(",").slice(0, 2).join(", ") ??
-            `${clickLat.toFixed(4)}, ${clickLng.toFixed(4)}`;
-          onSelect?.(clickLat, clickLng, name);
-        } catch {
-          onSelect?.(
-            clickLat,
-            clickLng,
-            `${clickLat.toFixed(4)}, ${clickLng.toFixed(4)}`
-          );
-        }
-      });
-    }
-
-    mapInstanceRef.current = map;
-
-    return () => {
-      map.remove();
-      mapInstanceRef.current = null;
-      markerRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const onLoad = useCallback((m: google.maps.Map) => {
+    setMap(m);
+    geocoderRef.current = new google.maps.Geocoder();
   }, []);
 
-  const handleSearch = async () => {
-    if (!search.trim()) return;
-    setSearching(true);
-    setSuggestions([]);
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(search)}&format=json&limit=5`
+  const onUnmount = useCallback(() => setMap(null), []);
+
+  const handleMapClick = useCallback(
+    (e: google.maps.MapMouseEvent) => {
+      if (readonly || !e.latLng) return;
+      const newLat = e.latLng.lat();
+      const newLng = e.latLng.lng();
+      setMarker({ lat: newLat, lng: newLng });
+
+      geocoderRef.current?.geocode(
+        { location: { lat: newLat, lng: newLng } },
+        (results, status) => {
+          if (status === "OK" && results?.[0]) {
+            const name = results[0].formatted_address
+              .split(",")
+              .slice(0, 2)
+              .join(", ")
+              .trim();
+            onSelect?.(newLat, newLng, name);
+          } else {
+            onSelect?.(
+              newLat,
+              newLng,
+              `${newLat.toFixed(5)}, ${newLng.toFixed(5)}`
+            );
+          }
+        }
       );
-      const data = await res.json();
-      setSuggestions(data);
-    } catch {
-      // ignore
-    } finally {
-      setSearching(false);
-    }
-  };
+    },
+    [readonly, onSelect]
+  );
 
-  const selectSuggestion = (s: {
-    display_name: string;
-    lat: string;
-    lon: string;
-  }) => {
-    const lt = parseFloat(s.lat);
-    const ln = parseFloat(s.lon);
-    const map = mapInstanceRef.current;
-    if (!map) return;
+  const onPlaceChanged = useCallback(() => {
+    const place = autocompleteRef.current?.getPlace();
+    if (!place?.geometry?.location) return;
 
-    const icon = L.divIcon({
-      html: `<div style="background:#c8956c;width:20px;height:20px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid #f5e6d3;box-shadow:0 2px 8px rgba(0,0,0,0.5)"></div>`,
-      iconSize: [20, 20],
-      iconAnchor: [10, 20],
-      className: "",
-    });
+    const newLat = place.geometry.location.lat();
+    const newLng = place.geometry.location.lng();
+    const name =
+      place.name ||
+      place.formatted_address?.split(",").slice(0, 2).join(", ") ||
+      "";
 
-    map.flyTo([lt, ln], 15, { duration: 1 });
+    setMarker({ lat: newLat, lng: newLng });
+    map?.panTo({ lat: newLat, lng: newLng });
+    map?.setZoom(15);
+    onSelect?.(newLat, newLng, name);
+  }, [map, onSelect]);
 
-    if (markerRef.current) {
-      markerRef.current.setLatLng([lt, ln]);
-    } else {
-      markerRef.current = L.marker([lt, ln], { icon }).addTo(map);
-    }
-
-    const name = s.display_name.split(",").slice(0, 2).join(", ");
-    onSelect?.(lt, ln, name);
-    setSuggestions([]);
-    setSearch(name);
-  };
+  if (!isLoaded) {
+    return (
+      <div
+        className="w-full rounded-2xl bg-dark-elevated border border-dark-border flex items-center justify-center"
+        style={{ height: readonly ? 240 : 320 }}
+      >
+        <span className="text-coffee-700 text-sm">Loading map…</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
       {!readonly && (
-        <div className="relative">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              placeholder="Search location..."
-              className="flex-1 bg-dark-elevated border border-dark-border rounded-xl px-4 py-3 text-coffee-100 placeholder-coffee-700 focus:outline-none focus:border-coffee-500 transition-colors text-sm"
-            />
-            <button
-              type="button"
-              onClick={handleSearch}
-              disabled={searching}
-              className="bg-coffee-800 hover:bg-coffee-700 text-coffee-100 px-4 py-3 rounded-xl transition-colors text-sm font-medium disabled:opacity-50"
-            >
-              {searching ? "..." : "Search"}
-            </button>
-          </div>
-          {suggestions.length > 0 && (
-            <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-dark-elevated border border-dark-border rounded-xl overflow-hidden shadow-2xl">
-              {suggestions.map((s, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => selectSuggestion(s)}
-                  className="w-full text-left px-4 py-3 text-sm text-coffee-200 hover:bg-dark-card transition-colors border-b border-dark-border last:border-0 truncate"
-                >
-                  {s.display_name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <Autocomplete
+          onLoad={(ac) => {
+            autocompleteRef.current = ac;
+          }}
+          onPlaceChanged={onPlaceChanged}
+        >
+          <input
+            type="text"
+            placeholder="Search for a coffee shop, address, or place…"
+            className="w-full bg-dark-elevated border border-dark-border rounded-xl px-4 py-3 text-coffee-100 placeholder-coffee-700 focus:outline-none focus:border-coffee-500 transition-colors text-sm"
+          />
+        </Autocomplete>
       )}
+
       {locationName && (
         <p className="text-coffee-400 text-sm flex items-center gap-2">
           <span className="text-coffee-500">📍</span>
           {locationName}
         </p>
       )}
-      <div
-        ref={mapRef}
-        className="w-full rounded-2xl overflow-hidden border border-dark-border"
-        style={{ height: readonly ? "240px" : "320px" }}
-      />
+
+      <GoogleMap
+        mapContainerStyle={{
+          width: "100%",
+          height: readonly ? 240 : 320,
+          borderRadius: "1rem",
+          border: "1px solid #3d2a1e",
+          overflow: "hidden",
+        }}
+        center={defaultCenter}
+        zoom={marker ? 15 : 12}
+        onLoad={onLoad}
+        onUnmount={onUnmount}
+        onClick={handleMapClick}
+        options={{
+          styles: DARK_MAP_STYLE,
+          zoomControl: true,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: false,
+          clickableIcons: !readonly,
+          gestureHandling: readonly ? "none" : "auto",
+        }}
+      >
+        {marker && (
+          <Marker
+            position={marker}
+            icon={{
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 10,
+              fillColor: "#c8956c",
+              fillOpacity: 1,
+              strokeColor: "#f5e6d3",
+              strokeWeight: 2.5,
+            }}
+          />
+        )}
+      </GoogleMap>
+
       {!readonly && (
         <p className="text-coffee-700 text-xs text-center">
-          Click on the map or search to set the meeting location
+          Search above or click anywhere on the map
         </p>
       )}
     </div>
