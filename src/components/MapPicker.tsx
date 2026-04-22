@@ -1,90 +1,20 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
-import {
-  GoogleMap,
-  useJsApiLoader,
-  Marker,
-  Autocomplete,
-} from "@react-google-maps/api";
+import { useEffect, useRef, useState, useCallback } from "react";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
-const LIBRARIES: ("places")[] = ["places"];
-
-const DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
-  { elementType: "geometry", stylers: [{ color: "#1a0f0a" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#1a0f0a" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#c8956c" }] },
-  {
-    featureType: "administrative.locality",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#d4a06a" }],
-  },
-  {
-    featureType: "poi",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#9c5a1a" }],
-  },
-  {
-    featureType: "poi.park",
-    elementType: "geometry",
-    stylers: [{ color: "#2d1f17" }],
-  },
-  {
-    featureType: "poi.park",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#6b3f2a" }],
-  },
-  {
-    featureType: "road",
-    elementType: "geometry",
-    stylers: [{ color: "#3d2a1e" }],
-  },
-  {
-    featureType: "road",
-    elementType: "geometry.stroke",
-    stylers: [{ color: "#2d1507" }],
-  },
-  {
-    featureType: "road.highway",
-    elementType: "geometry",
-    stylers: [{ color: "#6b3f2a" }],
-  },
-  {
-    featureType: "road.highway",
-    elementType: "geometry.stroke",
-    stylers: [{ color: "#4a2515" }],
-  },
-  {
-    featureType: "road.highway",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#f5e6d3" }],
-  },
-  {
-    featureType: "transit",
-    elementType: "geometry",
-    stylers: [{ color: "#2d1f17" }],
-  },
-  {
-    featureType: "transit.station",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#9c5a1a" }],
-  },
-  {
-    featureType: "water",
-    elementType: "geometry",
-    stylers: [{ color: "#0d0805" }],
-  },
-  {
-    featureType: "water",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#4a2515" }],
-  },
-  {
-    featureType: "water",
-    elementType: "labels.text.stroke",
-    stylers: [{ color: "#0d0805" }],
-  },
-];
+interface PhotonFeature {
+  geometry: { coordinates: [number, number] };
+  properties: {
+    name?: string;
+    street?: string;
+    housenumber?: string;
+    city?: string;
+    country?: string;
+    osm_value?: string;
+  };
+}
 
 interface MapPickerProps {
   lat?: number;
@@ -94,6 +24,38 @@ interface MapPickerProps {
   onSelect?: (lat: number, lng: number, name: string) => void;
 }
 
+function buildMarkerIcon() {
+  return L.divIcon({
+    html: `<div style="
+      width:18px;height:18px;
+      background:#c8956c;
+      border-radius:50% 50% 50% 0;
+      transform:rotate(-45deg);
+      border:2.5px solid #f5e6d3;
+      box-shadow:0 2px 10px rgba(0,0,0,0.6)">
+    </div>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 18],
+    className: "",
+  });
+}
+
+function formatSuggestion(f: PhotonFeature): string {
+  const p = f.properties;
+  const parts = [
+    p.name,
+    p.street && p.housenumber ? `${p.street} ${p.housenumber}` : p.street,
+    p.city,
+    p.country,
+  ].filter(Boolean);
+  return parts.slice(0, 3).join(", ");
+}
+
+function formatShortName(f: PhotonFeature): string {
+  const p = f.properties;
+  return [p.name || p.street, p.city].filter(Boolean).slice(0, 2).join(", ");
+}
+
 export default function MapPicker({
   lat,
   lng,
@@ -101,151 +63,273 @@ export default function MapPicker({
   readonly = false,
   onSelect,
 }: MapPickerProps) {
-  const { isLoaded } = useJsApiLoader({
-    id: "google-map-script",
-    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!,
-    libraries: LIBRARIES,
-  });
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
 
-  const [map, setMap] = useState<google.maps.Map | null>(null);
-  const [marker, setMarker] = useState<{ lat: number; lng: number } | null>(
-    lat && lng ? { lat, lng } : null
-  );
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
-  const geocoderRef = useRef<google.maps.Geocoder | null>(null);
+  const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<PhotonFeature[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const defaultCenter = marker ?? { lat: 40.7128, lng: -74.006 };
+  const defaultLat = lat ?? 40.7128;
+  const defaultLng = lng ?? -74.006;
 
-  const onLoad = useCallback((m: google.maps.Map) => {
-    setMap(m);
-    geocoderRef.current = new google.maps.Geocoder();
+  // Init map
+  useEffect(() => {
+    if (!mapRef.current || mapInstanceRef.current) return;
+
+    const map = L.map(mapRef.current, {
+      center: [defaultLat, defaultLng],
+      zoom: lat ? 15 : 12,
+      zoomControl: true,
+      scrollWheelZoom: !readonly,
+      dragging: !readonly,
+      touchZoom: !readonly,
+      doubleClickZoom: !readonly,
+    });
+
+    L.tileLayer(
+      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      {
+        attribution:
+          '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/">CARTO</a>',
+        maxZoom: 19,
+      }
+    ).addTo(map);
+
+    if (lat && lng) {
+      markerRef.current = L.marker([lat, lng], {
+        icon: buildMarkerIcon(),
+      }).addTo(map);
+    }
+
+    if (!readonly) {
+      map.on("click", async (e) => {
+        const { lat: lt, lng: ln } = e.latlng;
+        placeMarker(map, lt, ln);
+
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lt}&lon=${ln}&format=json&addressdetails=1`,
+            { headers: { "Accept-Language": "en" } }
+          );
+          const data = await res.json();
+          const addr = data.address;
+          const name = [
+            addr?.road || addr?.pedestrian,
+            addr?.city || addr?.town || addr?.village,
+          ]
+            .filter(Boolean)
+            .join(", ") || data.display_name?.split(",").slice(0, 2).join(", ");
+          onSelect?.(lt, ln, name);
+        } catch {
+          onSelect?.(lt, ln, `${lt.toFixed(5)}, ${ln.toFixed(5)}`);
+        }
+      });
+    }
+
+    mapInstanceRef.current = map;
+
+    return () => {
+      map.remove();
+      mapInstanceRef.current = null;
+      markerRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const onUnmount = useCallback(() => setMap(null), []);
+  function placeMarker(map: L.Map, lt: number, ln: number) {
+    if (markerRef.current) {
+      markerRef.current.setLatLng([lt, ln]);
+    } else {
+      markerRef.current = L.marker([lt, ln], {
+        icon: buildMarkerIcon(),
+      }).addTo(map);
+    }
+  }
 
-  const handleMapClick = useCallback(
-    (e: google.maps.MapMouseEvent) => {
-      if (readonly || !e.latLng) return;
-      const newLat = e.latLng.lat();
-      const newLng = e.latLng.lng();
-      setMarker({ lat: newLat, lng: newLng });
+  // Debounced Photon autocomplete
+  const handleQueryChange = useCallback(
+    (value: string) => {
+      setQuery(value);
+      setSuggestions([]);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
 
-      geocoderRef.current?.geocode(
-        { location: { lat: newLat, lng: newLng } },
-        (results, status) => {
-          if (status === "OK" && results?.[0]) {
-            const name = results[0].formatted_address
-              .split(",")
-              .slice(0, 2)
-              .join(", ")
-              .trim();
-            onSelect?.(newLat, newLng, name);
-          } else {
-            onSelect?.(
-              newLat,
-              newLng,
-              `${newLat.toFixed(5)}, ${newLng.toFixed(5)}`
-            );
-          }
+      if (value.trim().length < 2) {
+        setShowDropdown(false);
+        return;
+      }
+
+      debounceRef.current = setTimeout(async () => {
+        setLoading(true);
+        try {
+          const res = await fetch(
+            `https://photon.komoot.io/api/?q=${encodeURIComponent(value)}&limit=6&lang=en`
+          );
+          const data = await res.json();
+          setSuggestions(data.features ?? []);
+          setShowDropdown(true);
+        } catch {
+          setSuggestions([]);
+        } finally {
+          setLoading(false);
         }
-      );
+      }, 300);
     },
-    [readonly, onSelect]
+    []
   );
 
-  const onPlaceChanged = useCallback(() => {
-    const place = autocompleteRef.current?.getPlace();
-    if (!place?.geometry?.location) return;
+  const selectSuggestion = useCallback(
+    (f: PhotonFeature) => {
+      const [ln, lt] = f.geometry.coordinates;
+      const name = formatShortName(f);
+      const map = mapInstanceRef.current;
+      if (!map) return;
 
-    const newLat = place.geometry.location.lat();
-    const newLng = place.geometry.location.lng();
-    const name =
-      place.name ||
-      place.formatted_address?.split(",").slice(0, 2).join(", ") ||
-      "";
+      map.flyTo([lt, ln], 15, { duration: 0.8 });
+      placeMarker(map, lt, ln);
+      onSelect?.(lt, ln, name);
+      setQuery(formatSuggestion(f));
+      setShowDropdown(false);
+      setSuggestions([]);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onSelect]
+  );
 
-    setMarker({ lat: newLat, lng: newLng });
-    map?.panTo({ lat: newLat, lng: newLng });
-    map?.setZoom(15);
-    onSelect?.(newLat, newLng, name);
-  }, [map, onSelect]);
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node)
+      ) {
+        setShowDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
 
-  if (!isLoaded) {
-    return (
-      <div
-        className="w-full rounded-2xl bg-dark-elevated border border-dark-border flex items-center justify-center"
-        style={{ height: readonly ? 240 : 320 }}
-      >
-        <span className="text-coffee-700 text-sm">Loading map…</span>
-      </div>
-    );
-  }
+  const PLACE_ICONS: Record<string, string> = {
+    cafe: "☕",
+    restaurant: "🍽️",
+    bar: "🍺",
+    fast_food: "🍔",
+    hotel: "🏨",
+    park: "🌳",
+    default: "📍",
+  };
 
   return (
     <div className="space-y-3">
       {!readonly && (
-        <Autocomplete
-          onLoad={(ac) => {
-            autocompleteRef.current = ac;
-          }}
-          onPlaceChanged={onPlaceChanged}
-        >
-          <input
-            type="text"
-            placeholder="Search for a coffee shop, address, or place…"
-            className="w-full bg-dark-elevated border border-dark-border rounded-xl px-4 py-3 text-coffee-100 placeholder-coffee-700 focus:outline-none focus:border-coffee-500 transition-colors text-sm"
-          />
-        </Autocomplete>
+        <div className="relative" ref={dropdownRef}>
+          <div className="relative">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => handleQueryChange(e.target.value)}
+              onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
+              placeholder="Search for a café, address, or place…"
+              autoComplete="off"
+              className="w-full bg-dark-elevated border border-dark-border rounded-xl pl-4 pr-10 py-3 text-coffee-100 placeholder-coffee-700 focus:outline-none focus:border-coffee-500 transition-colors text-sm"
+            />
+            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              {loading ? (
+                <svg
+                  className="w-4 h-4 text-coffee-600 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8v8z"
+                  />
+                </svg>
+              ) : (
+                <svg
+                  className="w-4 h-4 text-coffee-700"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+              )}
+            </div>
+          </div>
+
+          {showDropdown && suggestions.length > 0 && (
+            <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-dark-card border border-dark-border rounded-xl overflow-hidden shadow-2xl">
+              {suggestions.map((f, i) => {
+                const icon =
+                  PLACE_ICONS[f.properties.osm_value ?? ""] ??
+                  PLACE_ICONS.default;
+                const full = formatSuggestion(f);
+                const short = f.properties.name;
+                const sub = full
+                  .replace(short ? short + ", " : "", "")
+                  .slice(0, 60);
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onMouseDown={() => selectSuggestion(f)}
+                    className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-dark-elevated transition-colors border-b border-dark-border last:border-0"
+                  >
+                    <span className="text-base mt-0.5 shrink-0">{icon}</span>
+                    <div className="min-w-0">
+                      <p className="text-coffee-100 text-sm font-medium truncate">
+                        {short || sub}
+                      </p>
+                      {short && (
+                        <p className="text-coffee-600 text-xs truncate mt-0.5">
+                          {sub}
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
 
       {locationName && (
         <p className="text-coffee-400 text-sm flex items-center gap-2">
-          <span className="text-coffee-500">📍</span>
-          {locationName}
+          <span>📍</span>
+          <span className="truncate">{locationName}</span>
         </p>
       )}
 
-      <GoogleMap
-        mapContainerStyle={{
-          width: "100%",
-          height: readonly ? 240 : 320,
-          borderRadius: "1rem",
-          border: "1px solid #3d2a1e",
-          overflow: "hidden",
-        }}
-        center={defaultCenter}
-        zoom={marker ? 15 : 12}
-        onLoad={onLoad}
-        onUnmount={onUnmount}
-        onClick={handleMapClick}
-        options={{
-          styles: DARK_MAP_STYLE,
-          zoomControl: true,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false,
-          clickableIcons: !readonly,
-          gestureHandling: readonly ? "none" : "auto",
-        }}
-      >
-        {marker && (
-          <Marker
-            position={marker}
-            icon={{
-              path: google.maps.SymbolPath.CIRCLE,
-              scale: 10,
-              fillColor: "#c8956c",
-              fillOpacity: 1,
-              strokeColor: "#f5e6d3",
-              strokeWeight: 2.5,
-            }}
-          />
-        )}
-      </GoogleMap>
+      <div
+        ref={mapRef}
+        className="w-full rounded-2xl overflow-hidden border border-dark-border"
+        style={{ height: readonly ? 240 : 320 }}
+      />
 
       {!readonly && (
-        <p className="text-coffee-700 text-xs text-center">
-          Search above or click anywhere on the map
+        <p className="text-coffee-800 text-xs text-center">
+          Search above or click on the map to pick a location
         </p>
       )}
     </div>
