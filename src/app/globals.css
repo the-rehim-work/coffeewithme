@@ -17,18 +17,31 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Google Maps dark theme overrides */
-.gm-style .gm-style-iw-c {
+/* MapLibre GL overrides */
+.maplibregl-ctrl-attrib {
+  background: rgba(13, 8, 5, 0.75) !important;
+  color: #6b3f2a !important;
+  font-size: 9px !important;
+}
+.maplibregl-ctrl-attrib a {
+  color: #9c5a1a !important;
+}
+.maplibregl-ctrl-group {
   background: #2d1f17 !important;
   border: 1px solid #3d2a1e !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5) !important;
 }
-
-.gm-style-iw-d {
-  color: #f5e6d3 !important;
+.maplibregl-ctrl-group button {
+  background: transparent !important;
 }
-
-.gm-ui-hover-effect span {
-  background-color: #c8956c !important;
+.maplibregl-ctrl-group button span {
+  filter: invert(0.7) sepia(1) saturate(2) hue-rotate(5deg) !important;
+}
+.maplibregl-ctrl-group button:hover {
+  background: #3d2a1e !important;
+}
+.maplibregl-canvas {
+  cursor: crosshair;
 }
 
 /* Custom scrollbar */
